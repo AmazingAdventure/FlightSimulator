@@ -23,6 +23,9 @@ export class Hud {
   private legSelect = document.createElement("select");
 
   onCameraMode?: (mode: CameraMode) => void;
+  onThrottleNudge?: (delta: number) => void;
+  onFlapsNudge?: (delta: number) => void;
+  onAutopilotToggle?: () => void;
   onWeather?: (weather: WeatherMode) => void;
   onTime?: (time: TimeMode) => void;
   onQuality?: (quality: SettingsState["quality"]) => void;
@@ -78,15 +81,15 @@ export class Hud {
     this.warning.textContent = "STALL";
 
     this.controls.className = "control-strip";
-    this.controls.innerHTML = `
-      <span>W/S pitch</span>
-      <span>A/D roll</span>
-      <span>Q/E rudder</span>
-      <span>+/- throttle</span>
-      <span>F flaps</span>
-      <span>P autopilot</span>
-      <span>C camera</span>
-    `;
+    this.controls.append(
+      actionButton("Throttle -", () => this.onThrottleNudge?.(-0.08)),
+      actionButton("Throttle +", () => this.onThrottleNudge?.(0.08)),
+      actionButton("Flaps -", () => this.onFlapsNudge?.(-0.25)),
+      actionButton("Flaps +", () => this.onFlapsNudge?.(0.25)),
+      actionButton("Autopilot", () => this.onAutopilotToggle?.()),
+      actionButton("Camera", () => this.cycleCamera()),
+      actionButton("Flight Deck", () => this.onPause?.())
+    );
 
     this.buildSettings();
     this.root.append(instruments, horizon, routePanel, this.warning, this.controls, this.settingsPanel);
@@ -95,16 +98,16 @@ export class Hud {
 
   update(telemetry: AircraftTelemetry): void {
     const leg = this.route.currentLeg;
-    this.speed.textContent = telemetry.airspeed.toFixed(0);
-    this.altitude.textContent = telemetry.altitude.toFixed(0);
-    this.vsi.textContent = telemetry.verticalSpeed.toFixed(0);
-    this.heading.textContent = telemetry.heading.toFixed(0).padStart(3, "0");
-    this.throttle.style.height = `${Math.round(telemetry.throttle * 100)}%`;
-    this.attitude.style.transform = `rotate(${telemetry.roll}deg)`;
-    this.pitchTape.style.transform = `translateY(${telemetry.pitch * 1.6}px)`;
+    this.speed.textContent = formatNumber(telemetry.airspeed);
+    this.altitude.textContent = formatNumber(telemetry.altitude);
+    this.vsi.textContent = formatNumber(telemetry.verticalSpeed);
+    this.heading.textContent = formatNumber(telemetry.heading).padStart(3, "0");
+    this.throttle.style.height = `${Math.round(finiteOr(telemetry.throttle, 0) * 100)}%`;
+    this.attitude.style.transform = `rotate(${finiteOr(telemetry.roll, 0)}deg)`;
+    this.pitchTape.style.transform = `translateY(${finiteOr(telemetry.pitch, 0) * 1.6}px)`;
     this.routeTitle.textContent = `${leg.from.code} ${leg.from.city} -> ${leg.to.code} ${leg.to.city}`;
-    this.routeMeta.textContent = `${this.route.phase.toUpperCase()} | Leg ${this.route.currentLegIndex + 1}/${this.route.totalLegs} | ${this.route.remainingKm.toFixed(0)} km | ${leg.bearingDeg.toFixed(0).padStart(3, "0")} deg`;
-    this.progressFill.style.width = `${this.route.progressRatio * 100}%`;
+    this.routeMeta.textContent = `${this.route.phase.toUpperCase()} | Leg ${this.route.displayLegNumber}/${this.route.totalLegs} | ${formatNumber(this.route.remainingKm)} km | ${formatNumber(leg.bearingDeg).padStart(3, "0")} deg`;
+    this.progressFill.style.width = `${finiteOr(this.route.progressRatio, 0) * 100}%`;
     this.warning.classList.toggle("visible", telemetry.stall);
     this.root.querySelector('[data-pill="phase"]')!.textContent = this.route.phase.toUpperCase();
     this.root.querySelector('[data-pill="ap"]')!.textContent = telemetry.autopilot ? "AP ON" : "AP OFF";
@@ -182,6 +185,14 @@ export class Hud {
   }
 }
 
+function actionButton(label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
 function segmented(label: string, options: string[], active: string, onSelect: (value: string) => void): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "segmented-wrap";
@@ -209,4 +220,12 @@ function marker(className: string): HTMLElement {
   const el = document.createElement("i");
   el.className = className;
   return el;
+}
+
+function formatNumber(value: number): string {
+  return finiteOr(value, 0).toFixed(0);
+}
+
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
 }

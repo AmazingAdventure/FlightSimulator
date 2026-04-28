@@ -15,7 +15,11 @@ export class RouteManager {
   }
 
   get currentLegIndex(): number {
-    return this.legIndex;
+    return Math.min(this.legIndex, ROUTE_LEGS.length - 1);
+  }
+
+  get displayLegNumber(): number {
+    return this.currentLegIndex + 1;
   }
 
   get totalLegs(): number {
@@ -27,7 +31,8 @@ export class RouteManager {
   }
 
   get progressRatio(): number {
-    return THREE.MathUtils.clamp(this.progress / this.legLength, 0, 1);
+    const ratio = this.progress / this.legLength;
+    return Number.isFinite(ratio) ? THREE.MathUtils.clamp(ratio, 0, 1) : 0;
   }
 
   get remainingKm(): number {
@@ -53,7 +58,7 @@ export class RouteManager {
   }
 
   updateProgress(positionZ: number): void {
-    this.progress = THREE.MathUtils.clamp(-positionZ, 0, this.legLength);
+    this.progress = Number.isFinite(positionZ) ? THREE.MathUtils.clamp(-positionZ, 0, this.legLength) : 0;
   }
 
   advanceLeg(): boolean {
@@ -68,7 +73,7 @@ export class RouteManager {
   }
 
   jumpToLeg(index: number): void {
-    this.legIndex = THREE.MathUtils.clamp(index, 0, ROUTE_LEGS.length - 1);
+    this.legIndex = Number.isFinite(index) ? THREE.MathUtils.clamp(Math.trunc(index), 0, ROUTE_LEGS.length - 1) : 0;
     this.progress = 0;
   }
 

@@ -108,7 +108,13 @@ export class Aircraft {
       if (input.brake) this.velocity.multiplyScalar(1 - dt * 1.3);
     }
 
-    this.updateTelemetry(speed);
+    let telemetrySpeed = speed;
+    if (!this.hasFiniteState()) {
+      this.reset();
+      telemetrySpeed = this.velocity.length();
+    }
+
+    this.updateTelemetry(telemetrySpeed);
   }
 
   getTelemetry(): AircraftTelemetry {
@@ -213,6 +219,22 @@ export class Aircraft {
     noseWheel.position.set(0, -0.46, -1.86);
     noseWheel.rotation.y = Math.PI / 2;
     this.group.add(noseWheel);
+  }
+
+  private hasFiniteState(): boolean {
+    return (
+      Number.isFinite(this.group.position.x) &&
+      Number.isFinite(this.group.position.y) &&
+      Number.isFinite(this.group.position.z) &&
+      Number.isFinite(this.group.rotation.x) &&
+      Number.isFinite(this.group.rotation.y) &&
+      Number.isFinite(this.group.rotation.z) &&
+      Number.isFinite(this.velocity.x) &&
+      Number.isFinite(this.velocity.y) &&
+      Number.isFinite(this.velocity.z) &&
+      Number.isFinite(this.throttle) &&
+      Number.isFinite(this.flaps)
+    );
   }
 }
 

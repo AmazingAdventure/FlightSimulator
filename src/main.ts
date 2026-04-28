@@ -28,6 +28,15 @@ scene.addAircraft(aircraft);
 hud.onCameraMode = (mode: CameraMode) => {
   settings.cameraMode = mode;
 };
+hud.onThrottleNudge = (delta) => {
+  aircraft.throttle = THREE.MathUtils.clamp(aircraft.throttle + delta, 0, 1);
+};
+hud.onFlapsNudge = (delta) => {
+  aircraft.flaps = THREE.MathUtils.clamp(aircraft.flaps + delta, 0, 1);
+};
+hud.onAutopilotToggle = () => {
+  aircraft.autopilot = !aircraft.autopilot;
+};
 hud.onWeather = (weather) => {
   settings.weather = weather;
 };

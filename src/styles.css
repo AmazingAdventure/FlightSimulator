@@ -77,7 +77,7 @@ h1 {
 }
 
 .status-pills span,
-.control-strip span {
+.control-strip button {
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(8, 16, 24, 0.48);
   backdrop-filter: blur(14px);
@@ -85,6 +85,19 @@ h1 {
   padding: 8px 10px;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.control-strip button {
+  min-height: 34px;
+  color: #f8fbff;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.control-strip button:hover {
+  background: rgba(232, 244, 255, 0.92);
+  color: #08121c;
+  text-shadow: none;
 }
 
 .instruments {
@@ -266,7 +279,7 @@ h1 {
   left: 50%;
   top: 18px;
   display: flex;
-  max-width: min(760px, calc(100vw - 310px));
+  max-width: min(760px, calc(100vw - 330px));
   gap: 7px;
   flex-wrap: wrap;
   justify-content: center;
@@ -363,7 +376,20 @@ h1 {
   }
 
   .control-strip {
-    display: none;
+    top: 86px;
+    left: 12px;
+    right: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: none;
+    transform: none;
+    z-index: 2;
+  }
+
+  .control-strip button {
+    min-width: 0;
+    padding: 7px 6px;
+    font-size: 0.72rem;
   }
 
   .instruments {
@@ -389,7 +415,7 @@ h1 {
   }
 
   .settings-panel {
-    top: 76px;
+    top: 132px;
     right: 12px;
   }
 
