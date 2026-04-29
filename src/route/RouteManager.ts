@@ -39,6 +39,14 @@ export class RouteManager {
     return this.currentLeg.distanceKm * (1 - this.progressRatio);
   }
 
+  get isComplete(): boolean {
+    return this.legIndex >= ROUTE_LEGS.length;
+  }
+
+  get hasReachedLegEnd(): boolean {
+    return !this.isComplete && this.progressRatio >= 0.995;
+  }
+
   get phase(): FlightPhase {
     if (this.legIndex >= ROUTE_LEGS.length) return "complete";
     const p = this.progressRatio;
@@ -64,6 +72,7 @@ export class RouteManager {
   advanceLeg(): boolean {
     if (this.legIndex >= ROUTE_LEGS.length - 1) {
       this.legIndex = ROUTE_LEGS.length;
+      this.progress = this.legLength;
       return false;
     }
 

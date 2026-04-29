@@ -74,9 +74,14 @@ function animate(now: number): void {
   if (!settings.paused) {
     aircraft.update(dt, controls, route.worldTarget);
     route.updateProgress(aircraft.group.position.z);
-    if (route.phase === "landed" && aircraft.group.position.y < 2 && aircraft.getTelemetry().airspeed < 46) {
+    if (route.hasReachedLegEnd) {
       const advanced = route.advanceLeg();
-      if (advanced) resetForLeg();
+      if (advanced) {
+        resetForLeg();
+      } else {
+        settings.paused = true;
+        hud.setPaused(true);
+      }
     }
   }
 
