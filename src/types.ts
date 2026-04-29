@@ -1,6 +1,7 @@
 export type CameraMode = "cockpit" | "chase" | "cinematic" | "map";
 export type WeatherMode = "clear" | "mist" | "storm";
 export type TimeMode = "dawn" | "day" | "dusk" | "night";
+export type SimRate = 1 | 2 | 4 | 8;
 
 export interface InputState {
   pitch: number;
@@ -34,5 +35,6 @@ export interface SettingsState {
   weather: WeatherMode;
   time: TimeMode;
   quality: "balanced" | "high";
+  simRate: SimRate;
   paused: boolean;
 }

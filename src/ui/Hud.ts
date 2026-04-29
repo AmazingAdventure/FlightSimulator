@@ -1,9 +1,10 @@
-import { AircraftTelemetry, CameraMode, SettingsState, TimeMode, WeatherMode } from "../types";
+import { AircraftTelemetry, CameraMode, SettingsState, SimRate, TimeMode, WeatherMode } from "../types";
 import { RouteManager } from "../route/RouteManager";
 
 const cameraModes: CameraMode[] = ["cockpit", "chase", "cinematic", "map"];
 const weatherModes: WeatherMode[] = ["clear", "mist", "storm"];
 const timeModes: TimeMode[] = ["dawn", "day", "dusk", "night"];
+const simRates: SimRate[] = [1, 2, 4, 8];
 
 export class Hud {
   private root = document.createElement("div");
@@ -26,6 +27,7 @@ export class Hud {
   onThrottleNudge?: (delta: number) => void;
   onFlapsNudge?: (delta: number) => void;
   onAutopilotToggle?: () => void;
+  onSimRateChange?: (rate: SimRate) => void;
   onWeather?: (weather: WeatherMode) => void;
   onTime?: (time: TimeMode) => void;
   onQuality?: (quality: SettingsState["quality"]) => void;
@@ -43,6 +45,7 @@ export class Hud {
         <div class="status-pills">
           <span data-pill="phase">TAKEOFF</span>
           <span data-pill="ap">AP OFF</span>
+          <span data-pill="rate">1X</span>
         </div>
       </div>
     `;
@@ -87,6 +90,7 @@ export class Hud {
       actionButton("Flaps -", () => this.onFlapsNudge?.(-0.25)),
       actionButton("Flaps +", () => this.onFlapsNudge?.(0.25)),
       actionButton("Autopilot", () => this.onAutopilotToggle?.()),
+      actionButton("FF >>", () => this.cycleSimRate()),
       actionButton("Camera", () => this.cycleCamera()),
       actionButton("Flight Deck", () => this.onPause?.())
     );
@@ -111,6 +115,7 @@ export class Hud {
     this.warning.classList.toggle("visible", telemetry.stall);
     this.root.querySelector('[data-pill="phase"]')!.textContent = this.route.phase.toUpperCase();
     this.root.querySelector('[data-pill="ap"]')!.textContent = telemetry.autopilot ? "AP ON" : "AP OFF";
+    this.root.querySelector('[data-pill="rate"]')!.textContent = `${this.settings.simRate}X`;
     this.root.classList.toggle("paused", this.settings.paused);
   }
 
@@ -122,6 +127,11 @@ export class Hud {
   cycleCamera(): void {
     const next = cameraModes[(cameraModes.indexOf(this.settings.cameraMode) + 1) % cameraModes.length];
     this.setCamera(next);
+  }
+
+  cycleSimRate(): void {
+    const next = simRates[(simRates.indexOf(this.settings.simRate) + 1) % simRates.length];
+    this.setSimRate(next);
   }
 
   private instrument(label: string, value: HTMLElement, unit: string): HTMLElement {
@@ -149,6 +159,9 @@ export class Hud {
       this.settings.time = mode as TimeMode;
       this.onTime?.(this.settings.time);
     });
+    const simRate = segmented("Fast Forward", simRates.map((rate) => `${rate}x`), `${this.settings.simRate}x`, (mode) => {
+      this.setSimRate(Number.parseInt(mode, 10) as SimRate);
+    });
     const quality = segmented("Quality", ["balanced", "high"], this.settings.quality, (mode) => {
       this.settings.quality = mode as SettingsState["quality"];
       this.onQuality?.(this.settings.quality);
@@ -173,7 +186,7 @@ export class Hud {
     row.textContent = "Route leg";
     row.append(this.legSelect);
 
-    this.settingsPanel.append(title, camera, weather, time, quality, row, pause);
+    this.settingsPanel.append(title, camera, weather, time, simRate, quality, row, pause);
   }
 
   private setCamera(mode: CameraMode): void {
@@ -181,6 +194,14 @@ export class Hud {
     this.onCameraMode?.(mode);
     this.settingsPanel.querySelectorAll("[data-group='Camera'] button").forEach((button) => {
       button.classList.toggle("active", button.textContent?.toLowerCase() === mode);
+    });
+  }
+
+  private setSimRate(rate: SimRate): void {
+    this.settings.simRate = rate;
+    this.onSimRateChange?.(rate);
+    this.settingsPanel.querySelectorAll("[data-group='Fast Forward'] button").forEach((button) => {
+      button.classList.toggle("active", button.textContent?.toLowerCase() === `${rate}x`);
     });
   }
 }

@@ -15,6 +15,7 @@ const settings: SettingsState = {
   weather: "clear",
   time: "dawn",
   quality: "high",
+  simRate: 1,
   paused: false
 };
 
@@ -36,6 +37,9 @@ hud.onFlapsNudge = (delta) => {
 };
 hud.onAutopilotToggle = () => {
   aircraft.autopilot = !aircraft.autopilot;
+};
+hud.onSimRateChange = (rate) => {
+  settings.simRate = rate;
 };
 hud.onWeather = (weather) => {
   settings.weather = weather;
@@ -60,7 +64,7 @@ let last = performance.now();
 
 function animate(now: number): void {
   requestAnimationFrame(animate);
-  const dt = Math.min(0.045, (now - last) / 1000);
+  const frameDt = Math.min(0.045, (now - last) / 1000);
   last = now;
 
   const controls = input.sample();
@@ -72,21 +76,26 @@ function animate(now: number): void {
   if (controls.reset) resetForLeg();
 
   if (!settings.paused) {
-    aircraft.update(dt, controls, route.worldTarget);
-    route.updateProgress(aircraft.group.position.z);
-    if (route.hasReachedLegEnd) {
-      const advanced = route.advanceLeg();
-      if (advanced) {
-        resetForLeg();
-      } else {
-        settings.paused = true;
-        hud.setPaused(true);
+    let remainingDt = frameDt * settings.simRate;
+    while (remainingDt > 0 && !settings.paused) {
+      const dt = Math.min(0.035, remainingDt);
+      aircraft.update(dt, controls, route.worldTarget);
+      route.updateProgress(aircraft.group.position.z);
+      if (route.hasReachedLegEnd) {
+        const advanced = route.advanceLeg();
+        if (advanced) {
+          resetForLeg();
+        } else {
+          settings.paused = true;
+          hud.setPaused(true);
+        }
       }
+      remainingDt -= dt;
     }
   }
 
   hud.update(aircraft.getTelemetry());
-  scene.update(dt, aircraft, settings);
+  scene.update(frameDt * settings.simRate, aircraft, settings);
 }
 
 function resetForLeg(): void {
