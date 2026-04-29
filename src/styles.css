@@ -300,6 +300,80 @@ h1 {
   backdrop-filter: blur(18px);
 }
 
+.globe-panel {
+  position: absolute;
+  inset: 76px 22px 22px auto;
+  display: none;
+  width: min(820px, calc(100vw - 44px));
+  padding: 16px;
+  pointer-events: auto;
+  border: 1px solid rgba(175, 224, 255, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(7, 15, 23, 0.86), rgba(5, 9, 15, 0.72));
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.44);
+  z-index: 8;
+}
+
+.globe-panel.open {
+  display: grid;
+  grid-template-rows: auto minmax(300px, 1fr) auto;
+  gap: 12px;
+}
+
+.globe-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.globe-panel h2 {
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+}
+
+.globe-panel header button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 7px;
+  color: #08121c;
+  background: #e8f4ff;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.globe-canvas {
+  width: 100%;
+  height: min(58vh, 560px);
+  min-height: 320px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(75, 165, 224, 0.16), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.globe-route-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+  gap: 6px;
+  color: #d5e7f5;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.globe-route-list span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-panel.open {
   display: grid;
   gap: 14px;
@@ -417,6 +491,26 @@ h1 {
   .settings-panel {
     top: 132px;
     right: 12px;
+  }
+
+  .globe-panel {
+    inset: 72px 12px 12px;
+    width: auto;
+    padding: 12px;
+  }
+
+  .globe-panel.open {
+    grid-template-rows: auto minmax(220px, 1fr) auto;
+  }
+
+  .globe-canvas {
+    height: min(38vh, 340px);
+    min-height: 210px;
+  }
+
+  .globe-route-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    font-size: 0.66rem;
   }
 
   .status-pills span {

@@ -1,5 +1,6 @@
 import { AircraftTelemetry, CameraMode, SettingsState, SimRate, TimeMode, WeatherMode } from "../types";
 import { RouteManager } from "../route/RouteManager";
+import { Waypoint } from "../route/waypoints";
 
 const cameraModes: CameraMode[] = ["cockpit", "chase", "cinematic", "map"];
 const weatherModes: WeatherMode[] = ["clear", "mist", "storm"];
@@ -21,7 +22,11 @@ export class Hud {
   private warning = document.createElement("div");
   private controls = document.createElement("div");
   private settingsPanel = document.createElement("div");
+  private globePanel = document.createElement("section");
+  private globeCanvas = document.createElement("canvas");
+  private globeRouteList = document.createElement("div");
   private legSelect = document.createElement("select");
+  private globeOpen = false;
 
   onCameraMode?: (mode: CameraMode) => void;
   onThrottleNudge?: (delta: number) => void;
@@ -92,11 +97,13 @@ export class Hud {
       actionButton("Autopilot", () => this.onAutopilotToggle?.()),
       actionButton("FF >>", () => this.cycleSimRate()),
       actionButton("Camera", () => this.cycleCamera()),
+      actionButton("Globe Map", () => this.toggleGlobeMap()),
       actionButton("Flight Deck", () => this.onPause?.())
     );
 
     this.buildSettings();
-    this.root.append(instruments, horizon, routePanel, this.warning, this.controls, this.settingsPanel);
+    this.buildGlobeMap();
+    this.root.append(instruments, horizon, routePanel, this.warning, this.controls, this.settingsPanel, this.globePanel);
     document.body.append(this.root);
   }
 
@@ -117,6 +124,7 @@ export class Hud {
     this.root.querySelector('[data-pill="ap"]')!.textContent = telemetry.autopilot ? "AP ON" : "AP OFF";
     this.root.querySelector('[data-pill="rate"]')!.textContent = `${this.settings.simRate}X`;
     this.root.classList.toggle("paused", this.settings.paused);
+    if (this.globeOpen) this.drawGlobeMap();
   }
 
   setPaused(paused: boolean): void {
@@ -132,6 +140,12 @@ export class Hud {
   cycleSimRate(): void {
     const next = simRates[(simRates.indexOf(this.settings.simRate) + 1) % simRates.length];
     this.setSimRate(next);
+  }
+
+  toggleGlobeMap(): void {
+    this.globeOpen = !this.globeOpen;
+    this.globePanel.classList.toggle("open", this.globeOpen);
+    if (this.globeOpen) this.drawGlobeMap();
   }
 
   private instrument(label: string, value: HTMLElement, unit: string): HTMLElement {
@@ -189,6 +203,33 @@ export class Hud {
     this.settingsPanel.append(title, camera, weather, time, simRate, quality, row, pause);
   }
 
+  private buildGlobeMap(): void {
+    this.globePanel.className = "globe-panel";
+    const header = document.createElement("header");
+    const copy = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "Route Globe";
+    const title = document.createElement("h2");
+    title.textContent = "Calgary to Bhubaneswar";
+    copy.append(eyebrow, title);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.addEventListener("click", () => this.toggleGlobeMap());
+    header.append(copy, close);
+
+    this.globeCanvas.className = "globe-canvas";
+    this.globeCanvas.width = 920;
+    this.globeCanvas.height = 640;
+    this.globeRouteList.className = "globe-route-list";
+    this.globeRouteList.innerHTML = this.route.allWaypoints
+      .map((point, index) => `<span>${String(index + 1).padStart(2, "0")} ${point.code} ${point.city}</span>`)
+      .join("");
+
+    this.globePanel.append(header, this.globeCanvas, this.globeRouteList);
+  }
+
   private setCamera(mode: CameraMode): void {
     this.settings.cameraMode = mode;
     this.onCameraMode?.(mode);
@@ -203,6 +244,175 @@ export class Hud {
     this.settingsPanel.querySelectorAll("[data-group='Fast Forward'] button").forEach((button) => {
       button.classList.toggle("active", button.textContent?.toLowerCase() === `${rate}x`);
     });
+  }
+
+  private drawGlobeMap(): void {
+    const rect = this.globeCanvas.getBoundingClientRect();
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const width = Math.max(360, Math.floor(rect.width * pixelRatio));
+    const height = Math.max(300, Math.floor(rect.height * pixelRatio));
+    if (this.globeCanvas.width !== width || this.globeCanvas.height !== height) {
+      this.globeCanvas.width = width;
+      this.globeCanvas.height = height;
+    }
+
+    const ctx = this.globeCanvas.getContext("2d");
+    if (!ctx) return;
+
+    const centerX = width * 0.5;
+    const centerY = height * 0.49;
+    const radius = Math.min(width * 0.43, height * 0.42);
+    const centerLon = -12;
+    const waypoints = this.route.allWaypoints;
+    const currentIndex = this.route.currentLegIndex;
+
+    ctx.clearRect(0, 0, width, height);
+    const ocean = ctx.createRadialGradient(centerX - radius * 0.34, centerY - radius * 0.36, radius * 0.1, centerX, centerY, radius);
+    ocean.addColorStop(0, "rgba(104, 198, 255, 0.95)");
+    ocean.addColorStop(0.62, "rgba(35, 113, 159, 0.88)");
+    ocean.addColorStop(1, "rgba(7, 27, 49, 0.96)");
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = ocean;
+    ctx.fill();
+
+    this.drawGlobeGrid(ctx, centerX, centerY, radius);
+    this.drawApproxContinents(ctx, centerX, centerY, radius, centerLon);
+    this.drawRoute(ctx, waypoints, centerX, centerY, radius, centerLon, false);
+    this.drawRoute(ctx, waypoints, centerX, centerY, radius, centerLon, true);
+
+    waypoints.forEach((point, index) => {
+      const projected = projectPoint(point.lat, point.lon, centerLon, centerX, centerY, radius);
+      const isCurrent = index === currentIndex;
+      const isDestination = index === waypoints.length - 1;
+      const dotSize = isCurrent ? 8 : isDestination ? 7 : 5;
+      ctx.globalAlpha = projected.front ? 1 : 0.48;
+      ctx.beginPath();
+      ctx.arc(projected.x, projected.y, dotSize * pixelRatio, 0, Math.PI * 2);
+      ctx.fillStyle = isCurrent ? "#fff36d" : point.accent;
+      ctx.fill();
+      ctx.lineWidth = 1.5 * pixelRatio;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
+      ctx.stroke();
+
+      const labelOffset = index % 2 === 0 ? -12 : 18;
+      ctx.font = `${Math.round(11 * pixelRatio)}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = "rgba(246, 251, 255, 0.94)";
+      ctx.textAlign = projected.x > centerX ? "left" : "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${index + 1}. ${point.code}`, projected.x + (projected.x > centerX ? 10 : -10) * pixelRatio, projected.y + labelOffset * pixelRatio);
+    });
+    ctx.globalAlpha = 1;
+
+    const rim = ctx.createRadialGradient(centerX, centerY, radius * 0.75, centerX, centerY, radius * 1.03);
+    rim.addColorStop(0, "rgba(255, 255, 255, 0)");
+    rim.addColorStop(1, "rgba(255, 255, 255, 0.48)");
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = rim;
+    ctx.lineWidth = 5 * pixelRatio;
+    ctx.stroke();
+  }
+
+  private drawGlobeGrid(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number): void {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.strokeStyle = "rgba(231, 246, 255, 0.18)";
+    ctx.lineWidth = Math.max(1, radius * 0.004);
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, radius * Math.cos(i * 0.25), radius * 0.18 + Math.abs(i) * radius * 0.14, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, radius * 0.16 + Math.abs(i) * radius * 0.12, radius, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawApproxContinents(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, centerLon: number): void {
+    const landSets = [
+      [
+        { lat: 62, lon: -126 },
+        { lat: 54, lon: -98 },
+        { lat: 43, lon: -74 },
+        { lat: 29, lon: -82 },
+        { lat: 18, lon: -95 },
+        { lat: 35, lon: -118 }
+      ],
+      [
+        { lat: 58, lon: -9 },
+        { lat: 56, lon: 14 },
+        { lat: 46, lon: 31 },
+        { lat: 31, lon: 50 },
+        { lat: 13, lon: 78 },
+        { lat: 21, lon: 86 },
+        { lat: 42, lon: 45 },
+        { lat: 52, lon: 5 }
+      ],
+      [
+        { lat: 31, lon: 34 },
+        { lat: 22, lon: 57 },
+        { lat: 9, lon: 47 },
+        { lat: 1, lon: 32 },
+        { lat: 16, lon: 20 }
+      ]
+    ];
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    landSets.forEach((shape) => {
+      ctx.beginPath();
+      shape.forEach((point, index) => {
+        const projected = projectPoint(point.lat, point.lon, centerLon, cx, cy, radius);
+        if (index === 0) ctx.moveTo(projected.x, projected.y);
+        else ctx.lineTo(projected.x, projected.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = "rgba(88, 151, 99, 0.6)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(211, 231, 183, 0.35)";
+      ctx.lineWidth = Math.max(1, radius * 0.006);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  private drawRoute(ctx: CanvasRenderingContext2D, waypoints: Waypoint[], cx: number, cy: number, radius: number, centerLon: number, front: boolean): void {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.lineWidth = Math.max(2, radius * (front ? 0.012 : 0.008));
+    ctx.strokeStyle = front ? "rgba(255, 237, 124, 0.96)" : "rgba(255, 255, 255, 0.28)";
+    ctx.setLineDash(front ? [] : [radius * 0.026, radius * 0.02]);
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const samples = sampleLeg(waypoints[i], waypoints[i + 1], 28);
+      ctx.beginPath();
+      let started = false;
+      samples.forEach((point) => {
+        const projected = projectPoint(point.lat, point.lon, centerLon, cx, cy, radius);
+        if (projected.front !== front) {
+          started = false;
+          return;
+        }
+        if (!started) {
+          ctx.moveTo(projected.x, projected.y);
+          started = true;
+        } else {
+          ctx.lineTo(projected.x, projected.y);
+        }
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 }
 
@@ -249,4 +459,34 @@ function formatNumber(value: number): string {
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
+}
+
+function projectPoint(lat: number, lon: number, centerLon: number, cx: number, cy: number, radius: number) {
+  const latRad = (lat * Math.PI) / 180;
+  const lonRad = ((lon - centerLon) * Math.PI) / 180;
+  const x = cx + radius * Math.cos(latRad) * Math.sin(lonRad);
+  const y = cy - radius * Math.sin(latRad);
+  const z = Math.cos(latRad) * Math.cos(lonRad);
+  return { x, y, front: z >= 0 };
+}
+
+function sampleLeg(from: Waypoint, to: Waypoint, count: number): Array<{ lat: number; lon: number }> {
+  const points: Array<{ lat: number; lon: number }> = [];
+  let deltaLon = to.lon - from.lon;
+  if (deltaLon > 180) deltaLon -= 360;
+  if (deltaLon < -180) deltaLon += 360;
+  for (let i = 0; i <= count; i++) {
+    const t = i / count;
+    points.push({
+      lat: from.lat + (to.lat - from.lat) * t,
+      lon: normalizeLon(from.lon + deltaLon * t)
+    });
+  }
+  return points;
+}
+
+function normalizeLon(lon: number): number {
+  if (lon > 180) return lon - 360;
+  if (lon < -180) return lon + 360;
+  return lon;
 }
