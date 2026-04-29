@@ -6,6 +6,10 @@ const MIN_FLYING_SPEED = 23;
 const STALL_SPEED = 18;
 const GRAVITY = 9.81;
 
+interface ResetOptions {
+  keepAutopilot?: boolean;
+}
+
 export class Aircraft {
   readonly group = new THREE.Group();
   readonly velocity = new THREE.Vector3(0, 0, -8);
@@ -36,14 +40,15 @@ export class Aircraft {
     this.buildModel();
   }
 
-  reset(position = new THREE.Vector3(0, 1.4, 250)): void {
+  reset(position = new THREE.Vector3(0, 1.4, 250), options: ResetOptions = {}): void {
+    const shouldKeepAutopilot = options.keepAutopilot ? this.autopilot : false;
     this.group.position.copy(position);
     this.group.rotation.set(0, 0, 0);
     this.velocity.set(0, 0, -8);
     this.angular.set(0, 0, 0);
-    this.throttle = 0.62;
+    this.throttle = shouldKeepAutopilot ? 0.9 : 0.62;
     this.flaps = 0;
-    this.autopilot = false;
+    this.autopilot = shouldKeepAutopilot;
     this.airborne = false;
     this.stall = false;
   }
@@ -77,6 +82,7 @@ export class Aircraft {
     const drag = 0.012 + this.flaps * 0.018 + Math.abs(this.group.rotation.z) * 0.006;
     const accel = (desiredSpeed - speed) * 0.36 - speed * speed * drag * 0.002;
     this.velocity.addScaledVector(forward, accel * dt);
+    if (this.autopilot && target) this.applyAutopilotVelocityAssist(dt, target);
 
     const liftFactor = THREE.MathUtils.clamp(speed / MIN_FLYING_SPEED, 0, 1.45);
     const pitchLift = Math.sin(this.group.rotation.x) * 16;
@@ -129,16 +135,29 @@ export class Aircraft {
     const toTarget = target.clone().sub(this.group.position);
     const desiredHeading = Math.atan2(-toTarget.x, -toTarget.z);
     const headingError = wrapAngle(desiredHeading - this.group.rotation.y);
-    const desiredAltitude = this.group.position.z < -6200 ? 230 : 620;
-    const altitudeError = THREE.MathUtils.clamp((desiredAltitude - this.group.position.y) / 500, -0.7, 0.7);
+    const distanceRemaining = Math.max(0, -target.z + this.group.position.z);
+    const cruiseAltitude = 780;
+    const desiredAltitude = distanceRemaining < 1700 ? 260 : this.airborne ? cruiseAltitude : 90;
+    const altitudeError = THREE.MathUtils.clamp((desiredAltitude - this.group.position.y) / 520, -0.75, 0.75);
+    const takeoffBias = this.group.position.z > -450 && !this.airborne ? 0.34 : 0;
+    const approachBias = distanceRemaining < 1200 ? -0.08 : 0;
 
-    this.throttle = THREE.MathUtils.lerp(this.throttle, speed < 55 ? 0.88 : 0.68, 0.012);
+    const targetThrottle = distanceRemaining < 1100 ? 0.5 : speed < 57 ? 0.94 : 0.76;
+    this.throttle = THREE.MathUtils.lerp(this.throttle, targetThrottle, 0.028);
+    this.flaps = THREE.MathUtils.lerp(this.flaps, distanceRemaining < 1200 ? 0.45 : 0, 0.018);
 
     return {
-      pitch: THREE.MathUtils.clamp(-altitudeError - this.velocity.y * 0.02, -0.45, 0.45),
-      roll: THREE.MathUtils.clamp(headingError * 1.2, -0.55, 0.55),
-      yaw: THREE.MathUtils.clamp(headingError * 0.4, -0.35, 0.35)
+      pitch: THREE.MathUtils.clamp(altitudeError - this.velocity.y * 0.018 + takeoffBias + approachBias, -0.38, 0.5),
+      roll: THREE.MathUtils.clamp(-headingError * 1.35 - this.group.position.x * 0.0018, -0.55, 0.55),
+      yaw: THREE.MathUtils.clamp(headingError * 0.45 - this.group.position.x * 0.0008, -0.35, 0.35)
     };
+  }
+
+  private applyAutopilotVelocityAssist(dt: number, target: THREE.Vector3): void {
+    const distanceRemaining = Math.max(0, -target.z + this.group.position.z);
+    const targetForwardSpeed = distanceRemaining < 1000 ? 46 : 66;
+    this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, -this.group.position.x * 0.025, dt * 1.6);
+    this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, -targetForwardSpeed, dt * 0.42);
   }
 
   private updateTelemetry(speed: number): void {

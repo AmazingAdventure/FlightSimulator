@@ -90,7 +90,7 @@ function animate(now: number): void {
 }
 
 function resetForLeg(): void {
-  aircraft.reset(new THREE.Vector3(0, 1.4, 250));
+  aircraft.reset(new THREE.Vector3(0, 1.4, 250), { keepAutopilot: true });
   scene.rebuildAirports();
 }
 
