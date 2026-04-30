@@ -21,6 +21,7 @@ const EARTH_RADIUS_KM = 6371;
 
 export const WAYPOINTS: Waypoint[] = [
   { id: "calgary", city: "Calgary", airport: "Calgary Intl", code: "CYYC", lat: 51.122, lon: -114.014, accent: "#72d1ff" },
+  { id: "san-francisco", city: "San Francisco", airport: "San Francisco Intl", code: "SFO", lat: 37.619, lon: -122.375, accent: "#ffad66" },
   { id: "chicago", city: "Chicago", airport: "O'Hare Intl", code: "ORD", lat: 41.974, lon: -87.907, accent: "#f8d56b" },
   { id: "dc", city: "Washington DC", airport: "Dulles Intl", code: "IAD", lat: 38.953, lon: -77.457, accent: "#ff866e" },
   { id: "newark", city: "Newark, New Jersey", airport: "Newark Liberty", code: "EWR", lat: 40.689, lon: -74.174, accent: "#a4f28a" },

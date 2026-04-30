@@ -25,4 +25,4 @@ npm run dev
 
 ## Route
 
-Calgary -> Chicago -> Washington DC -> Newark -> Toronto -> Coventry -> Copenhagen -> Dubai -> Bombay/Mumbai -> Bangalore/Bengaluru -> Bhubaneswar.
+Calgary -> San Francisco -> Chicago -> Washington DC -> Newark -> Toronto -> Coventry -> Copenhagen -> Dubai -> Bombay/Mumbai -> Bangalore/Bengaluru -> Bhubaneswar.
