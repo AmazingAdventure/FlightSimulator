@@ -351,6 +351,9 @@ h1 {
 }
 
 .globe-canvas {
+  position: static;
+  display: block;
+  inset: auto;
   width: 100%;
   min-width: 0;
   height: min(64vh, 610px);

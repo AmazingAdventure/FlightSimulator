@@ -1,3 +1,6 @@
+import { geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
+import { feature } from "topojson-client";
+import landAtlas from "world-atlas/land-110m.json";
 import { AircraftTelemetry, CameraMode, SettingsState, SimRate, TimeMode, WeatherMode } from "../types";
 import { RouteManager } from "../route/RouteManager";
 import { Waypoint } from "../route/waypoints";
@@ -6,6 +9,8 @@ const cameraModes: CameraMode[] = ["cockpit", "chase", "cinematic", "map"];
 const weatherModes: WeatherMode[] = ["clear", "mist", "storm"];
 const timeModes: TimeMode[] = ["dawn", "day", "dusk", "night"];
 const simRates: SimRate[] = [1, 2, 4, 8];
+const landFeature = feature(landAtlas as never, (landAtlas as { objects: { land: unknown } }).objects.land as never);
+const globeGraticule = geoGraticule10();
 
 export class Hud {
   private root = document.createElement("div");
@@ -311,8 +316,7 @@ export class Hud {
     ctx.fillStyle = ocean;
     ctx.fill();
 
-    this.drawGlobeGrid(ctx, centerX, centerY, radius);
-    this.drawApproxContinents(ctx, centerX, centerY, radius, centerLon);
+    this.drawRealisticEarth(ctx, centerX, centerY, radius, centerLon);
     this.drawRoute(ctx, waypoints, centerX, centerY, radius, centerLon, false);
     this.drawRoute(ctx, waypoints, centerX, centerY, radius, centerLon, true);
 
@@ -423,73 +427,51 @@ export class Hud {
     ctx.restore();
   }
 
-  private drawGlobeGrid(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number): void {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.strokeStyle = "rgba(231, 246, 255, 0.18)";
-    ctx.lineWidth = Math.max(1, radius * 0.004);
-    for (let i = -2; i <= 2; i++) {
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, radius * Math.cos(i * 0.25), radius * 0.18 + Math.abs(i) * radius * 0.14, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    for (let i = -3; i <= 3; i++) {
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, radius * 0.16 + Math.abs(i) * radius * 0.12, radius, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  private drawApproxContinents(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, centerLon: number): void {
-    const landSets = [
-      [
-        { lat: 62, lon: -126 },
-        { lat: 54, lon: -98 },
-        { lat: 43, lon: -74 },
-        { lat: 29, lon: -82 },
-        { lat: 18, lon: -95 },
-        { lat: 35, lon: -118 }
-      ],
-      [
-        { lat: 58, lon: -9 },
-        { lat: 56, lon: 14 },
-        { lat: 46, lon: 31 },
-        { lat: 31, lon: 50 },
-        { lat: 13, lon: 78 },
-        { lat: 21, lon: 86 },
-        { lat: 42, lon: 45 },
-        { lat: 52, lon: 5 }
-      ],
-      [
-        { lat: 31, lon: 34 },
-        { lat: 22, lon: 57 },
-        { lat: 9, lon: 47 },
-        { lat: 1, lon: 32 },
-        { lat: 16, lon: 20 }
-      ]
-    ];
+  private drawRealisticEarth(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, centerLon: number): void {
+    const projection = geoOrthographic()
+      .translate([cx, cy])
+      .scale(radius)
+      .rotate([-centerLon, 0])
+      .clipAngle(90)
+      .precision(0.35);
+    const path = geoPath(projection, ctx);
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.clip();
-    landSets.forEach((shape) => {
-      ctx.beginPath();
-      shape.forEach((point, index) => {
-        const projected = projectPoint(point.lat, point.lon, centerLon, cx, cy, radius);
-        if (index === 0) ctx.moveTo(projected.x, projected.y);
-        else ctx.lineTo(projected.x, projected.y);
-      });
-      ctx.closePath();
-      ctx.fillStyle = "rgba(88, 151, 99, 0.6)";
-      ctx.fill();
-      ctx.strokeStyle = "rgba(211, 231, 183, 0.35)";
-      ctx.lineWidth = Math.max(1, radius * 0.006);
-      ctx.stroke();
-    });
+
+    ctx.beginPath();
+    path(globeGraticule);
+    ctx.strokeStyle = "rgba(225, 245, 255, 0.16)";
+    ctx.lineWidth = Math.max(0.75, radius * 0.003);
+    ctx.stroke();
+
+    ctx.beginPath();
+    path(landFeature);
+    ctx.fillStyle = "rgba(70, 128, 78, 0.82)";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.28)";
+    ctx.shadowBlur = radius * 0.018;
+    ctx.shadowOffsetY = radius * 0.01;
+    ctx.fill();
+
+    ctx.shadowColor = "transparent";
+    ctx.beginPath();
+    path(landFeature);
+    ctx.fillStyle = "rgba(189, 174, 118, 0.22)";
+    ctx.fill();
+
+    ctx.beginPath();
+    path(landFeature);
+    ctx.strokeStyle = "rgba(235, 246, 220, 0.56)";
+    ctx.lineWidth = Math.max(0.8, radius * 0.0035);
+    ctx.stroke();
+
+    ctx.beginPath();
+    path({ type: "Sphere" });
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
+    ctx.lineWidth = Math.max(1.5, radius * 0.01);
+    ctx.stroke();
     ctx.restore();
   }
 
