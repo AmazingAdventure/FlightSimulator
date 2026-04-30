@@ -25,8 +25,15 @@ export class Hud {
   private globePanel = document.createElement("section");
   private globeCanvas = document.createElement("canvas");
   private globeRouteList = document.createElement("div");
+  private globeDetails = document.createElement("div");
   private legSelect = document.createElement("select");
   private globeOpen = false;
+  private globeCenterLon = -98;
+  private globeZoom = 1;
+  private globeSelectedIndex = 0;
+  private globeDragging = false;
+  private globeDragStartX = 0;
+  private globeDragStartLon = 0;
 
   onCameraMode?: (mode: CameraMode) => void;
   onThrottleNudge?: (delta: number) => void;
@@ -145,7 +152,9 @@ export class Hud {
   toggleGlobeMap(): void {
     this.globeOpen = !this.globeOpen;
     this.globePanel.classList.toggle("open", this.globeOpen);
-    if (this.globeOpen) this.drawGlobeMap();
+    if (this.globeOpen) {
+      this.focusGlobeWaypoint(this.route.currentLegIndex);
+    }
   }
 
   private instrument(label: string, value: HTMLElement, unit: string): HTMLElement {
@@ -222,12 +231,34 @@ export class Hud {
     this.globeCanvas.className = "globe-canvas";
     this.globeCanvas.width = 920;
     this.globeCanvas.height = 640;
-    this.globeRouteList.className = "globe-route-list";
-    this.globeRouteList.innerHTML = this.route.allWaypoints
-      .map((point, index) => `<span>${String(index + 1).padStart(2, "0")} ${point.code} ${point.city}</span>`)
-      .join("");
+    this.globeCanvas.addEventListener("pointerdown", (event) => this.startGlobeDrag(event));
+    this.globeCanvas.addEventListener("pointermove", (event) => this.moveGlobeDrag(event));
+    this.globeCanvas.addEventListener("pointerup", () => this.endGlobeDrag());
+    this.globeCanvas.addEventListener("pointercancel", () => this.endGlobeDrag());
+    this.globeCanvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      this.globeZoom = clamp(this.globeZoom + (event.deltaY < 0 ? 0.08 : -0.08), 0.82, 1.34);
+      this.drawGlobeMap();
+    });
 
-    this.globePanel.append(header, this.globeCanvas, this.globeRouteList);
+    this.globeDetails.className = "globe-details";
+    this.globeRouteList.className = "globe-route-list";
+    this.route.allWaypoints.forEach((point, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${String(index + 1).padStart(2, "0")} ${point.code} ${point.city}`;
+      button.addEventListener("click", () => this.focusGlobeWaypoint(index));
+      this.globeRouteList.append(button);
+    });
+
+    const body = document.createElement("div");
+    body.className = "globe-body";
+    const sidebar = document.createElement("aside");
+    sidebar.className = "globe-sidebar";
+    sidebar.append(this.globeDetails, this.globeRouteList);
+    body.append(sidebar, this.globeCanvas);
+
+    this.globePanel.append(header, body);
   }
 
   private setCamera(mode: CameraMode): void {
@@ -261,12 +292,16 @@ export class Hud {
 
     const centerX = width * 0.5;
     const centerY = height * 0.49;
-    const radius = Math.min(width * 0.43, height * 0.42);
-    const centerLon = -12;
+    const radius = Math.min(width * 0.42, height * 0.42) * this.globeZoom;
+    const centerLon = this.globeCenterLon;
     const waypoints = this.route.allWaypoints;
     const currentIndex = this.route.currentLegIndex;
+    const selectedPoint = waypoints[this.globeSelectedIndex] ?? waypoints[currentIndex];
+
+    this.updateGlobeList(selectedPoint);
 
     ctx.clearRect(0, 0, width, height);
+    this.drawStarfield(ctx, width, height, radius);
     const ocean = ctx.createRadialGradient(centerX - radius * 0.34, centerY - radius * 0.36, radius * 0.1, centerX, centerY, radius);
     ocean.addColorStop(0, "rgba(104, 198, 255, 0.95)");
     ocean.addColorStop(0.62, "rgba(35, 113, 159, 0.88)");
@@ -281,26 +316,48 @@ export class Hud {
     this.drawRoute(ctx, waypoints, centerX, centerY, radius, centerLon, false);
     this.drawRoute(ctx, waypoints, centerX, centerY, radius, centerLon, true);
 
+    const labelRects: Array<{ x: number; y: number; width: number; height: number }> = [];
     waypoints.forEach((point, index) => {
       const projected = projectPoint(point.lat, point.lon, centerLon, centerX, centerY, radius);
       const isCurrent = index === currentIndex;
+      const isSelected = index === this.globeSelectedIndex;
       const isDestination = index === waypoints.length - 1;
-      const dotSize = isCurrent ? 8 : isDestination ? 7 : 5;
+      const dotSize = isCurrent || isSelected ? 8 : isDestination ? 7 : 5;
       ctx.globalAlpha = projected.front ? 1 : 0.48;
       ctx.beginPath();
       ctx.arc(projected.x, projected.y, dotSize * pixelRatio, 0, Math.PI * 2);
-      ctx.fillStyle = isCurrent ? "#fff36d" : point.accent;
+      ctx.fillStyle = isSelected ? "#ffffff" : isCurrent ? "#fff36d" : point.accent;
       ctx.fill();
       ctx.lineWidth = 1.5 * pixelRatio;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
       ctx.stroke();
 
-      const labelOffset = index % 2 === 0 ? -12 : 18;
+      if (!projected.front && !isSelected) return;
+
       ctx.font = `${Math.round(11 * pixelRatio)}px Inter, system-ui, sans-serif`;
-      ctx.fillStyle = "rgba(246, 251, 255, 0.94)";
+      const label = `${index + 1}. ${point.code}`;
+      const metrics = ctx.measureText(label);
+      const labelWidth = metrics.width + 12 * pixelRatio;
+      const labelHeight = 18 * pixelRatio;
+      const labelX = projected.x + (projected.x > centerX ? 12 : -12) * pixelRatio;
+      const labelY = projected.y + (index % 2 === 0 ? -16 : 18) * pixelRatio;
+      const rect = {
+        x: projected.x > centerX ? labelX : labelX - labelWidth,
+        y: labelY - labelHeight * 0.5,
+        width: labelWidth,
+        height: labelHeight
+      };
+      const collides = labelRects.some((item) => intersects(item, rect));
+      if (collides && !isSelected && !isCurrent) return;
+      labelRects.push(rect);
+
+      ctx.fillStyle = "rgba(4, 13, 20, 0.68)";
+      roundRect(ctx, rect.x, rect.y, rect.width, rect.height, 7 * pixelRatio);
+      ctx.fill();
+      ctx.fillStyle = "rgba(246, 251, 255, 0.96)";
       ctx.textAlign = projected.x > centerX ? "left" : "right";
       ctx.textBaseline = "middle";
-      ctx.fillText(`${index + 1}. ${point.code}`, projected.x + (projected.x > centerX ? 10 : -10) * pixelRatio, projected.y + labelOffset * pixelRatio);
+      ctx.fillText(label, labelX, labelY);
     });
     ctx.globalAlpha = 1;
 
@@ -312,6 +369,58 @@ export class Hud {
     ctx.strokeStyle = rim;
     ctx.lineWidth = 5 * pixelRatio;
     ctx.stroke();
+  }
+
+  private startGlobeDrag(event: PointerEvent): void {
+    this.globeDragging = true;
+    this.globeDragStartX = event.clientX;
+    this.globeDragStartLon = this.globeCenterLon;
+    this.globeCanvas.setPointerCapture(event.pointerId);
+  }
+
+  private moveGlobeDrag(event: PointerEvent): void {
+    if (!this.globeDragging) return;
+    const deltaX = event.clientX - this.globeDragStartX;
+    this.globeCenterLon = normalizeLon(this.globeDragStartLon - deltaX * 0.42);
+    this.drawGlobeMap();
+  }
+
+  private endGlobeDrag(): void {
+    this.globeDragging = false;
+  }
+
+  private focusGlobeWaypoint(index: number): void {
+    const waypoint = this.route.allWaypoints[index] ?? this.route.allWaypoints[0];
+    this.globeSelectedIndex = index;
+    this.globeCenterLon = waypoint.lon;
+    this.drawGlobeMap();
+  }
+
+  private updateGlobeList(selectedPoint: Waypoint): void {
+    this.globeDetails.innerHTML = `
+      <span>${String(this.globeSelectedIndex + 1).padStart(2, "0")} / ${this.route.allWaypoints.length}</span>
+      <strong>${selectedPoint.code} ${selectedPoint.city}</strong>
+      <em>${selectedPoint.airport}</em>
+    `;
+    Array.from(this.globeRouteList.children).forEach((item, index) => {
+      item.classList.toggle("active", index === this.globeSelectedIndex);
+      item.classList.toggle("current", index === this.route.currentLegIndex);
+    });
+  }
+
+  private drawStarfield(ctx: CanvasRenderingContext2D, width: number, height: number, radius: number): void {
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+    for (let i = 0; i < 90; i++) {
+      const x = (Math.sin(i * 73.13) * 0.5 + 0.5) * width;
+      const y = (Math.cos(i * 41.77) * 0.5 + 0.5) * height;
+      const size = (i % 5 === 0 ? 1.4 : 0.8) * Math.max(1, radius / 260);
+      ctx.globalAlpha = 0.16 + (i % 7) * 0.035;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   private drawGlobeGrid(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number): void {
@@ -459,6 +568,24 @@ function formatNumber(value: number): string {
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function intersects(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function projectPoint(lat: number, lon: number, centerLon: number, cx: number, cy: number, radius: number) {
